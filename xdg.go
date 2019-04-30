@@ -82,18 +82,18 @@ func (ps Paths) MustError(fpath string, err error) []byte {
 	return bs
 }
 
-// ConfigFile returns a file path containing the configuration file
-// specified. If one cannot be found, an error will be returned which
-// contains a list of all file paths searched.
-func (ps Paths) ConfigFile(name string) (string, error) {
+func (ps Paths) file(
+	xdgHome string,
+	homeDefault string,
+	xdgDirs string,
+	dirsDefault []string,
+	name string,
+) (string, error) {
 	home := os.Getenv("HOME")
-	xdgHome := os.Getenv("XDG_CONFIG_HOME")
-	xdgDirs := os.Getenv("XDG_CONFIG_DIRS")
 
 	// We're going to accumulate a list of directories for places to inspect
-	// for configuration files. Basically, this includes following the
-	// xdg basedir spec for the XDG_CONFIG_HOME and XDG_CONFIG_DIRS environment
-	// variables.
+	// for files. Basically, this includes following the xdg basedir spec for
+	// the XDG_<>_HOME and XDG_<>_DIRS environment variables.
 	try := make([]string, 0)
 
 	// from override
@@ -101,14 +101,14 @@ func (ps Paths) ConfigFile(name string) (string, error) {
 		try = append(try, ps.Override)
 	}
 
-	// XDG_CONFIG_HOME
+	// XDG_<>_HOME
 	if len(xdgHome) > 0 && strings.HasPrefix(xdgHome, "/") {
 		try = append(try, path.Join(xdgHome, ps.XDGSuffix))
 	} else if len(home) > 0 {
-		try = append(try, path.Join(home, ".config", ps.XDGSuffix))
+		try = append(try, homeDefault)
 	}
 
-	// XDG_CONFIG_DIRS
+	// XDG_<>_DIRS
 	if len(xdgDirs) > 0 {
 		for _, p := range strings.Split(xdgDirs, ":") {
 			// XDG basedir spec does not allow relative paths
@@ -118,7 +118,7 @@ func (ps Paths) ConfigFile(name string) (string, error) {
 			try = append(try, path.Join(p, ps.XDGSuffix))
 		}
 	} else {
-		try = append(try, path.Join("/", "etc", "xdg", ps.XDGSuffix))
+		try = append(try, dirsDefault...)
 	}
 
 	// Add directories from GOPATH. Last resort.
@@ -128,84 +128,49 @@ func (ps Paths) ConfigFile(name string) (string, error) {
 	}
 
 	return searchPaths(try, name)
+}
+
+
+// ConfigFile returns a file path containing the configuration file
+// specified. If one cannot be found, an error will be returned which
+// contains a list of all file paths searched.
+func (ps Paths) ConfigFile(name string) (string, error) {
+	return ps.file(
+		os.Getenv("XDG_CONFIG_HOME"),
+		path.Join(os.Getenv("HOME"), ".config", ps.XDGSuffix),
+		os.Getenv("XDG_CONFIG_DIRS"),
+		[]string{path.Join("/", "etc", "xdg", ps.XDGSuffix)},
+		name,
+	)
 }
 
 // DataFile returns a file path containing the data file
 // specified. If one cannot be found, an error will be returned which
 // contains a list of all file paths searched.
 func (ps Paths) DataFile(name string) (string, error) {
-	home := os.Getenv("HOME")
-	xdgHome := os.Getenv("XDG_DATA_HOME")
-	xdgDirs := os.Getenv("XDG_DATA_DIRS")
-
-	// We're going to accumulate a list of directories for places to inspect
-	// for data files. Basically, this includes following the
-	// xdg basedir spec for the XDG_DATA_HOME and XDG_DATA_DIRS environment
-	// variables.
-	try := make([]string, 0)
-
-	// from override
-	if len(ps.Override) > 0 {
-		try = append(try, ps.Override)
-	}
-
-	// XDG_DATA_HOME
-	if len(xdgHome) > 0 && strings.HasPrefix(xdgHome, "/") {
-		try = append(try, path.Join(xdgHome, ps.XDGSuffix))
-	} else if len(home) > 0 {
-		try = append(try, path.Join(home, ".local", "share", ps.XDGSuffix))
-	}
-
-	// XDG_CONFIG_DIRS
-	if len(xdgDirs) > 0 {
-		for _, p := range strings.Split(xdgDirs, ":") {
-			// XDG basedir spec does not allow relative paths
-			if !strings.HasPrefix(p, "/") {
-				continue
-			}
-			try = append(try, path.Join(p, ps.XDGSuffix))
-		}
-	} else {
-		try = append(try, path.Join("/", "usr", "local", "share", ps.XDGSuffix))
-		try = append(try, path.Join("/", "usr", "share", ps.XDGSuffix))
-	}
-
-	// Add directories from GOPATH. Last resort.
-	for _, dir := range build.Default.SrcDirs() {
-		d := path.Join(dir, ps.GoImportPath)
-		try = append(try, d)
-	}
-
-	return searchPaths(try, name)
+	return ps.file(
+		os.Getenv("XDG_DATA_HOME"),
+		path.Join(os.Getenv("HOME"), ".local", "share", ps.XDGSuffix),
+		os.Getenv("XDG_DATA_DIRS"),
+		[]string{
+			path.Join("/", "usr", "local", "share", ps.XDGSuffix),
+			path.Join("/", "usr", "share", ps.XDGSuffix),
+		},
+		name,
+	)
 }
 
 // RuntimeFile returns a file path containing the runtime file
 // specified. If one cannot be found, an error will be returned which
 // contains a list of all file paths searched.
 func (ps Paths) RuntimeFile(name string) (string, error) {
-	xdgRuntime := os.Getenv("XDG_RUNTIME_DIR")
-
-	try := make([]string, 0)
-
-	// from override
-	if len(ps.Override) > 0 {
-		try = append(try, ps.Override)
-	}
-
-	// XDG_RUNTIME_DIR
-	if len(xdgRuntime) > 0 {
-		try = append(try, path.Join(xdgRuntime, ps.XDGSuffix))
-	} else {
-		try = append(try, path.Join(os.TempDir(), ps.XDGSuffix))
-	}
-
-	// Add directories from GOPATH. Last resort.
-	for _, dir := range build.Default.SrcDirs() {
-		d := path.Join(dir, ps.GoImportPath)
-		try = append(try, d)
-	}
-
-	return searchPaths(try, name)
+	return ps.file(
+		os.Getenv("XDG_RUNTIME_DIR"),
+		path.Join(os.TempDir(), ps.XDGSuffix),
+		"",
+		[]string{},
+		name,
+	)
 }
 
 func searchPaths(paths []string, suffix string) (string, error) {
@@ -219,9 +184,8 @@ func searchPaths(paths []string, suffix string) (string, error) {
 		fpath := path.Join(dir, suffix)
 		if exists(fpath) {
 			return fpath, nil
-		} else {
-			tried = append(tried, fpath)
 		}
+		tried = append(tried, fpath)
 	}
 
 	// Show the user where we've looked for config files...
