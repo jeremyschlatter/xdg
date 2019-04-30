@@ -86,19 +86,18 @@ func (ps Paths) MustError(fpath string, err error) []byte {
 	return bs
 }
 
-func (ps Paths) file(
-	xdgHome string,
-	homeDefault string,
-	xdgDirs string,
-	dirsDefault []string,
-	name string,
-) (string, error) {
-	home := os.Getenv("HOME")
+type xdgBasedirs struct {
+	home string
+	homeFallback string
+	searchDirs string
+	searchDirsFallback []string
+}
 
+func (ps Paths) file(base xdgBasedirs, name string) (string, error) {
 	// We're going to accumulate a list of directories for places to inspect
 	// for files. Basically, this includes following the xdg basedir spec for
 	// the XDG_<>_HOME and XDG_<>_DIRS environment variables.
-	try := make([]string, 0)
+	var try []string
 
 	// from override
 	if len(ps.Override) > 0 {
@@ -106,15 +105,18 @@ func (ps Paths) file(
 	}
 
 	// XDG_<>_HOME
-	if len(xdgHome) > 0 && strings.HasPrefix(xdgHome, "/") {
-		try = append(try, path.Join(xdgHome, ps.XDGSuffix))
-	} else if len(home) > 0 {
-		try = append(try, homeDefault)
+	if home := os.ExpandEnv(base.home); strings.HasPrefix(home, "/") {
+		try = append(try, path.Join(home, ps.XDGSuffix))
+	} else if len(base.homeFallback) > 0 {
+		try = append(
+			try,
+			path.Join(os.ExpandEnv(base.homeFallback), ps.XDGSuffix),
+		)
 	}
 
 	// XDG_<>_DIRS
-	if len(xdgDirs) > 0 {
-		for _, p := range strings.Split(xdgDirs, ":") {
+	if len(base.searchDirs) > 0 {
+		for _, p := range strings.Split(base.searchDirs, ":") {
 			// XDG basedir spec does not allow relative paths
 			if !strings.HasPrefix(p, "/") {
 				continue
@@ -122,7 +124,9 @@ func (ps Paths) file(
 			try = append(try, path.Join(p, ps.XDGSuffix))
 		}
 	} else {
-		try = append(try, dirsDefault...)
+		for _, dir := range base.searchDirsFallback {
+			try = append(try, path.Join(dir, ps.XDGSuffix))
+		}
 	}
 
 	// Add directories from GOPATH. Last resort.
@@ -134,60 +138,59 @@ func (ps Paths) file(
 	return searchPaths(try, name)
 }
 
+var configDirs = xdgBasedirs{
+	home: "$XDG_CONFIG_HOME",
+	homeFallback: "$HOME/.config",
+	searchDirs: "$XDG_CONFIG_DIRS",
+	searchDirsFallback: []string{"/etc/xdg"},
+}
 
 // ConfigFile returns a file path containing the configuration file
 // specified. If one cannot be found, an error will be returned which
 // contains a list of all file paths searched.
 func (ps Paths) ConfigFile(name string) (string, error) {
-	return ps.file(
-		os.Getenv("XDG_CONFIG_HOME"),
-		path.Join(os.Getenv("HOME"), ".config", ps.XDGSuffix),
-		os.Getenv("XDG_CONFIG_DIRS"),
-		[]string{path.Join("/", "etc", "xdg", ps.XDGSuffix)},
-		name,
-	)
+	return ps.file(configDirs, name)
+}
+
+var dataDirs = xdgBasedirs{
+	home: "$XDG_DATA_HOME",
+	homeFallback: "$HOME/.local/share",
+	searchDirs: "$XDG_DATA_DIRS",
+	searchDirsFallback: []string{
+		"/usr/local/share",
+		"/usr/share",
+	},
 }
 
 // DataFile returns a file path containing the data file
 // specified. If one cannot be found, an error will be returned which
 // contains a list of all file paths searched.
 func (ps Paths) DataFile(name string) (string, error) {
-	return ps.file(
-		os.Getenv("XDG_DATA_HOME"),
-		path.Join(os.Getenv("HOME"), ".local", "share", ps.XDGSuffix),
-		os.Getenv("XDG_DATA_DIRS"),
-		[]string{
-			path.Join("/", "usr", "local", "share", ps.XDGSuffix),
-			path.Join("/", "usr", "share", ps.XDGSuffix),
-		},
-		name,
-	)
+	return ps.file(dataDirs, name)
+}
+
+var runtimeDirs = xdgBasedirs{
+	home: "$XDG_RUNTIME_DIR",
+	homeFallback: os.TempDir(),
 }
 
 // RuntimeFile returns a file path containing the runtime file
 // specified. If one cannot be found, an error will be returned which
 // contains a list of all file paths searched.
 func (ps Paths) RuntimeFile(name string) (string, error) {
-	return ps.file(
-		os.Getenv("XDG_RUNTIME_DIR"),
-		path.Join(os.TempDir(), ps.XDGSuffix),
-		"",
-		[]string{},
-		name,
-	)
+	return ps.file(runtimeDirs, name)
+}
+
+var cacheDirs = xdgBasedirs{
+	home: "$XDG_CACHE_HOME",
+	homeFallback: "$HOME/.cache",
 }
 
 // CacheFile returns a file path containing the cache file
 // specified. If one cannot be found, an error will be returned which
 // contains a list of all file paths searched.
 func (ps Paths) CacheFile(name string) (string, error) {
-	return ps.file(
-		os.Getenv("XDG_CACHE_HOME"),
-		path.Join(os.Getenv("HOME"), ".cache"),
-		"",
-		[]string{},
-		name,
-	)
+	return ps.file(cacheDirs, name)
 }
 
 func searchPaths(paths []string, suffix string) (string, error) {
