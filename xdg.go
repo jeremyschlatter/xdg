@@ -31,6 +31,10 @@ import (
 //
 //	$XDG_RUNTIME_DIR (or /tmp when not set; implementation defined)
 //
+// For cache files, these are:
+//
+//	$XDG_CACHE_HOME (or $HOME/.cache when not set)
+//
 // Finally, the directory specified by GoImportPath is searched in all
 // source directories reported by the `go/build` package.
 type Paths struct {
@@ -167,6 +171,19 @@ func (ps Paths) RuntimeFile(name string) (string, error) {
 	return ps.file(
 		os.Getenv("XDG_RUNTIME_DIR"),
 		path.Join(os.TempDir(), ps.XDGSuffix),
+		"",
+		[]string{},
+		name,
+	)
+}
+
+// CacheFile returns a file path containing the cache file
+// specified. If one cannot be found, an error will be returned which
+// contains a list of all file paths searched.
+func (ps Paths) CacheFile(name string) (string, error) {
+	return ps.file(
+		os.Getenv("XDG_CACHE_HOME"),
+		path.Join(os.Getenv("HOME"), ".cache"),
 		"",
 		[]string{},
 		name,
