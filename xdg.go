@@ -87,10 +87,26 @@ func (ps Paths) MustError(fpath string, err error) []byte {
 }
 
 type xdgBasedirs struct {
-	home string
-	homeFallback string
-	searchDirs string
+	home               string
+	homeFallback       string
+	searchDirs         string
 	searchDirsFallback []string
+}
+
+func (ps Paths) ensureFile(base xdgBasedirs, name string) (string, error) {
+	if existing, err := ps.file(base, name); err == nil {
+		return existing, nil
+	}
+	result := path.Join(os.ExpandEnv(base.home), ps.XDGSuffix, name)
+	if err := os.MkdirAll(path.Dir(result), 0700); err != nil {
+		return "", err
+	}
+	f, err := os.OpenFile(result, os.O_CREATE, 0700)
+	if err != nil {
+		return "", err
+	}
+	f.Close()
+	return result, nil
 }
 
 func (ps Paths) file(base xdgBasedirs, name string) (string, error) {
@@ -139,9 +155,9 @@ func (ps Paths) file(base xdgBasedirs, name string) (string, error) {
 }
 
 var configDirs = xdgBasedirs{
-	home: "$XDG_CONFIG_HOME",
-	homeFallback: "$HOME/.config",
-	searchDirs: "$XDG_CONFIG_DIRS",
+	home:               "$XDG_CONFIG_HOME",
+	homeFallback:       "$HOME/.config",
+	searchDirs:         "$XDG_CONFIG_DIRS",
 	searchDirsFallback: []string{"/etc/xdg"},
 }
 
@@ -152,10 +168,16 @@ func (ps Paths) ConfigFile(name string) (string, error) {
 	return ps.file(configDirs, name)
 }
 
+// EnsureConfigFile returns a file path containing the configuration file
+// specified. If one does not already exist, it will be created.
+func (ps Paths) EnsureConfigFile(name string) (string, error) {
+	return ps.ensureFile(configDirs, name)
+}
+
 var dataDirs = xdgBasedirs{
-	home: "$XDG_DATA_HOME",
+	home:         "$XDG_DATA_HOME",
 	homeFallback: "$HOME/.local/share",
-	searchDirs: "$XDG_DATA_DIRS",
+	searchDirs:   "$XDG_DATA_DIRS",
 	searchDirsFallback: []string{
 		"/usr/local/share",
 		"/usr/share",
@@ -169,8 +191,14 @@ func (ps Paths) DataFile(name string) (string, error) {
 	return ps.file(dataDirs, name)
 }
 
+// EnsureDataFile returns a file path containing the data file
+// specified. If one does not already exist, it will be created.
+func (ps Paths) EnsureDataFile(name string) (string, error) {
+	return ps.ensureFile(dataDirs, name)
+}
+
 var runtimeDirs = xdgBasedirs{
-	home: "$XDG_RUNTIME_DIR",
+	home:         "$XDG_RUNTIME_DIR",
 	homeFallback: os.TempDir(),
 }
 
@@ -181,8 +209,14 @@ func (ps Paths) RuntimeFile(name string) (string, error) {
 	return ps.file(runtimeDirs, name)
 }
 
+// EnsureRuntimeFile returns a file path containing the runtime file
+// specified. If one does not already exist, it will be created.
+func (ps Paths) EnsureRuntimeFile(name string) (string, error) {
+	return ps.ensureFile(runtimeDirs, name)
+}
+
 var cacheDirs = xdgBasedirs{
-	home: "$XDG_CACHE_HOME",
+	home:         "$XDG_CACHE_HOME",
 	homeFallback: "$HOME/.cache",
 }
 
@@ -191,6 +225,12 @@ var cacheDirs = xdgBasedirs{
 // contains a list of all file paths searched.
 func (ps Paths) CacheFile(name string) (string, error) {
 	return ps.file(cacheDirs, name)
+}
+
+// EnsureCacheFile returns a file path containing the config file
+// specified. If one does not already exist, it will be created.
+func (ps Paths) EnsureCacheFile(name string) (string, error) {
+	return ps.ensureFile(cacheDirs, name)
 }
 
 func searchPaths(paths []string, suffix string) (string, error) {
