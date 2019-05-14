@@ -97,7 +97,11 @@ func (ps Paths) ensureFile(base xdgBasedirs, name string) (string, error) {
 	if existing, err := ps.file(base, name); err == nil {
 		return existing, nil
 	}
-	result := path.Join(os.ExpandEnv(base.home), ps.XDGSuffix, name)
+	home := os.ExpandEnv(base.home)
+	if !strings.HasPrefix(home, "/") {
+		home = os.ExpandEnv(base.homeFallback)
+	}
+	result := path.Join(home, ps.XDGSuffix, name)
 	if err := os.MkdirAll(path.Dir(result), 0700); err != nil {
 		return "", err
 	}
